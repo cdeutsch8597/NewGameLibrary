@@ -42,18 +42,45 @@ LocalStrategy = require('passport-local').Strategy;
 
 passport.use(new LocalStrategy({
     usernameField:'',
-    passwordField:'',
+    passwordField:''
     },
     function(username, password, done){
-        var user = {
-            username: username,
-            password: password
-        };
+        MongoClient.connect(url, function(err, db){
+            if(err) throw err;
 
-        done(null, user);
+            var dbObj = db.db("users");
+
+            dbObj.collection("users").findOne({username:username}, function(err, results){
+                if(results.password === password)
+                {
+                    var user = results;
+                    done(null, user);
+                }
+                else
+                {
+                    done(null, false, {message:'Bad Password'});
+                }
+            });
+        });
 }));
 
-app.get("/", function(req, response){
+function ensureAuthenticated(req, res, next)
+{
+    if(req.isAuthenticated())
+    {
+        next();
+    }
+    else{
+        res.redirect("/sign-in");
+    }
+}
+
+app.get("/logout", function(req, res){
+    req.logout();
+    res.redirect("/sign-in");
+});
+
+app.get("/", ensureAuthenticated, function(req, response){
     MongoClient.connect(url, function(err, db){
         if(err) throw err;
         var dbObj = db.db("games");
@@ -66,11 +93,11 @@ app.get("/", function(req, response){
     });
 });
 
-app.get("/new-entry", function(req, res){
+app.get("/new-entry",ensureAuthenticated, function(req, res){
     res.render("new-entry");
 });
 
-app.get("/sign-up", function(req, res){
+app.get("/sign-in", function(req, res){
     res.render("sign-in");
 });
 
@@ -108,7 +135,7 @@ app.post("/sign-up", function(request, response){
         dbObj.collection('users').insert(user, function(err, results){
             if(err) throw err;
             request.login(request.body, function(){
-                response.redirect('/profile');
+                response.redirect('/sign-in');
             });
         });
 
@@ -116,9 +143,9 @@ app.post("/sign-up", function(request, response){
 });
 
 app.post("/sign-in", passport.authenticate('local', {
-    failuerRedirect:'/sign-in'
+    failureRedirect:'/sign-in'
     }), function(request, response){
-        response.redirect('/profile');
+        response.redirect('/');
     });
 
 app.get('/profile', function(request, response){
